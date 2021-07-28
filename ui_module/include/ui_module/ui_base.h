@@ -1,0 +1,4 @@
+#pragma 
+
+struct UiBase {
+};

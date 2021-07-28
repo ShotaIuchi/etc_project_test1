@@ -5,6 +5,8 @@
 #include "external/imgui/imgui_impl_win32.h"
 #include "external/imgui/imgui_impl_dx11.h"
 
+#include <ui_module/ui_base.h>
+
 // Data
 static ID3D11Device* g_pd3dDevice = NULL;
 static ID3D11DeviceContext* g_pd3dDeviceContext = NULL;
