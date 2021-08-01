@@ -171,6 +171,14 @@ public:
     }
 };
 
+class MyName {
+    std::string _name;
+public:
+    void setName(std::string name) {
+        _name = name;
+    }
+};
+
 class Widget : public UseRouter {
     ViewGroup* _rootView;
 public:
@@ -311,13 +319,11 @@ public:
     }
     void addDisplay(std::string name) override {
         if (_displayWidget.find(name) == _displayWidget.end()) {
-            //_displayWidget.emplace(name, _widget.at(name));
             _addRequest.emplace(name, _widget.at(name));
         }
     }
     void removeDisplay(std::string name) override {
         if (_displayWidget.find(name) != _displayWidget.end()) {
-            //_displayWidget.erase(name);
             _removeRequest.emplace(name, _widget.at(name));
         }
     }
