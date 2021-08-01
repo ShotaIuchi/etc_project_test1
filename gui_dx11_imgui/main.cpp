@@ -29,6 +29,9 @@ LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
 #include <functional>
 #include <algorithm>
 #include <type_traits>
+#include <unordered_map>
+#include <queue>
+#include <mutex>
 
 struct View {
     virtual void draw() = 0;
@@ -107,13 +110,13 @@ public:
         _parent = parent;
     }
     virtual void draw() override {
-        if (!_parent) {
+        /*if (!_parent) {
             ImGui::Begin(_name.c_str());
-        }
+        }*/
         drawImpl();
-        if (!_parent) {
+       /* if (!_parent) {
             ImGui::End();
-        }  
+        }  */
     }
 protected:
     std::list<std::unique_ptr<View>>& getChild() {
@@ -121,7 +124,6 @@ protected:
     }
     virtual void drawImpl() {
         for (const auto& child : _childs) {
-            //child->draw();
             child.get()->draw();
         }
     }
@@ -139,21 +141,44 @@ public:
     {}
 protected:
     virtual void drawImpl() {
-        for (const auto& child : getChild()) {
-            child.get()->draw();
-            ImGui::SameLine();
+        auto last = getChild().end();
+        last--;
+        for (auto child = getChild().begin(); child != getChild().end(); ++child) {
+            child->get()->draw();
+            if (last != child) {
+                ImGui::SameLine();
+            }
         }
     }
 };
 
-class Widget {
+class Widget;
+struct RouterBase {
+public:
+    virtual void add(std::string name, Widget* w) = 0;
+    virtual void addDisplay(std::string name) = 0;
+    virtual void removeDisplay(std::string name) = 0;
+};
+
+class UseRouter {
+    RouterBase* _router;
+public:
+    void setRouter(RouterBase* router) {
+        _router = router;
+    }
+    RouterBase* getRouter() {
+        return _router;
+    }
+};
+
+class Widget : public UseRouter {
     ViewGroup* _rootView;
 public:
     void onCreate() {
         _rootView = onCreateView();
     }
     virtual ViewGroup* onCreateView() = 0;
-    void onDraw() {
+    virtual void onDraw() {
         _rootView->draw();
     }
 };
@@ -162,23 +187,33 @@ class RootWidget : public Widget {
 public:
     virtual ViewGroup* onCreateView() override
     {
-        LinerVerticalLayout* pageG = new LinerVerticalLayout("pageG");
-        LinerHorizonLayout* page1 = new LinerHorizonLayout("page1");
+        ViewGroup* pageG = new LinerVerticalLayout("pageG");
+        ViewGroup* page1 = new LinerHorizonLayout("page1");
         {
             Button* a1 = new Button("aa1");
-            Button* a2 = new Button("aa2");
-            Button* a3 = new Button("aa3");
-            a1->setOnClickListenr([](const View& const v) {
-                std::cout << (&v) << "(aa1)" << std::endl;
+            a1->setOnClickListenr([this](const View& const v)
+                {
+                    std::cout << (&v) << "(aa1)" << std::endl;
+                    RouterBase* r = this->getRouter();
+                    r->addDisplay("P1");
                 }
             );
             page1->addChild(a1);
+            Button* a2 = new Button("aa2");
+            a2->setOnClickListenr([this](const View& const v)
+                {
+                    std::cout << (&v) << "(aa2)" << std::endl;
+                    RouterBase* r = this->getRouter();
+                    r->addDisplay("P2");
+                }
+            );
             page1->addChild(a2);
+            Button* a3 = new Button("aa3");
             page1->addChild(a3);
         }
         pageG->addChild(page1);
 
-        LinerHorizonLayout* page2 = new LinerHorizonLayout("page2");
+        ViewGroup* page2 = new LinerHorizonLayout("page2");
         {
             Button* a12 = new Button("aaa1");
             Button* a22 = new Button("aaa2");
@@ -189,6 +224,115 @@ public:
         }
         pageG->addChild(page2);
         return pageG;
+    }
+    void onDraw() override {
+        ImGui::Begin("aaa");
+        Widget::onDraw();
+        ImGui::End();
+    }
+};
+
+class RootWidget2 : public Widget {
+public:
+    virtual ViewGroup* onCreateView() override
+    {
+        ViewGroup* pageG = new LinerVerticalLayout("pageG");
+        ViewGroup* page2 = new LinerHorizonLayout("page2");
+        {
+            Button* a12 = new Button("aaa1");
+            a12->setOnClickListenr([this](const View& const v)
+                {
+                    std::cout << (&v) << "(aa1)" << std::endl;
+                    RouterBase* r = this->getRouter();
+                    r->removeDisplay("P1");
+                }
+            );
+            Button* a22 = new Button("aaa2");
+            Button* a32 = new Button("aaa3");
+            page2->addChild(a12);
+            page2->addChild(a22);
+            page2->addChild(a32);
+        }
+        pageG->addChild(page2);
+        return pageG;
+    }
+    void onDraw() override {
+        ImGui::Begin("bbb");
+        Widget::onDraw();
+        ImGui::End();
+    }
+};
+
+class RootWidget3 : public Widget {
+public:
+    virtual ViewGroup* onCreateView() override
+    {
+        ViewGroup* pageG = new LinerVerticalLayout("pageG");
+        ViewGroup* page2 = new LinerHorizonLayout("page2");
+        {
+            Button* a12 = new Button("aaa1");
+            a12->setOnClickListenr([this](const View& const v)
+                {
+                    std::cout << (&v) << "(aa1)" << std::endl;
+                    RouterBase* r = this->getRouter();
+                    r->removeDisplay("P2");
+                }
+            );
+            Button* a22 = new Button("aaa2");
+            Button* a32 = new Button("aaa3");
+            page2->addChild(a12);
+            page2->addChild(a22);
+            page2->addChild(a32);
+        }
+        pageG->addChild(page2);
+        return pageG;
+    }
+    void onDraw() override {
+        ImGui::Begin("ccc");
+        Widget::onDraw();
+        ImGui::End();
+    }
+};
+
+
+class Router : public RouterBase {
+    using PWidget = typename std::shared_ptr<Widget>;
+    struct Page {
+        PWidget widget;
+    };
+    std::unordered_map<std::string, PWidget> _widget;
+    std::unordered_map<std::string, PWidget> _displayWidget;
+    std::unordered_map<std::string, PWidget> _addRequest;
+    std::unordered_map<std::string, PWidget> _removeRequest;
+public:
+    void add(std::string name, Widget* w) override {
+        w->setRouter(this);
+        _widget.emplace(name, PWidget(w));
+    }
+    void addDisplay(std::string name) override {
+        if (_displayWidget.find(name) == _displayWidget.end()) {
+            //_displayWidget.emplace(name, _widget.at(name));
+            _addRequest.emplace(name, _widget.at(name));
+        }
+    }
+    void removeDisplay(std::string name) override {
+        if (_displayWidget.find(name) != _displayWidget.end()) {
+            //_displayWidget.erase(name);
+            _removeRequest.emplace(name, _widget.at(name));
+        }
+    }
+    void onDraw() {
+        for (auto pair : _addRequest) {
+            _displayWidget.emplace(pair.first, pair.second);
+        }
+        _addRequest.clear();
+        for (auto pair : _removeRequest) {
+            _displayWidget.erase(pair.first);
+        }
+        _removeRequest.clear();
+        for (auto pair : _displayWidget) {
+            pair.second.get()->onDraw();
+        }
     }
 };
 
@@ -296,8 +440,20 @@ int main(int argc, char** argv) {
     //pageG.addChild(&page2);
 
 
-    RootWidget r;
-    r.onCreate();
+    Widget* r1 = new RootWidget();
+    r1->onCreate();
+    Widget* r2 = new RootWidget2();
+    r2->onCreate();
+    Widget* r3 = new RootWidget3();
+    r3->onCreate();
+
+    Router router;
+    router.add("ROOT", r1);
+    router.add("P1", r2);
+    router.add("P2", r3);
+    router.addDisplay("ROOT");
+    //router.removeDisplay("ROOT");
+    //router.addDisplay("P1");
 
 
     std::list<std::unique_ptr<View>> v;
@@ -367,7 +523,7 @@ int main(int argc, char** argv) {
             //pageG.draw();
             //ImGui::End();
 
-            r.onDraw();
+            router.onDraw();
         }
 
 
