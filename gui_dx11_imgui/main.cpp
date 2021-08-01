@@ -33,6 +33,11 @@ LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
 #include <queue>
 #include <mutex>
 
+
+static const char* NAME_ROOT = "ROOT";
+static const char* PAGE_2 = "PAGE_2";
+static const char* PAGE_3 = "PAGE_3";
+
 struct View {
     virtual void draw() = 0;
     virtual void setParent(View* parent) = 0;
@@ -66,12 +71,31 @@ public:
     }
 };
 
+class MyName {
+    std::string _name;
+public:
+    MyName()
+    {}
+    MyName(std::string name) {
+        setName(name);
+    }
+    virtual ~MyName()
+    {}
+    void setName(std::string name) {
+        _name = name;
+    }
+    const std::string& getName() {
+        return _name;
+    }
+};
 
 class Button : public View {
     UseListener<OnClickListener> _onClickListener;
-    std::string _name;
+    MyName _myName;
 public:
-    Button(std::string name) : _name(name)
+    Button(std::string name) : _myName(name)
+    {}
+    virtual ~Button()
     {}
     void setOnClickListenr(OnClickListener listener) {
         _onClickListener.setListener(listener);
@@ -80,7 +104,7 @@ public:
         _onClickListener.setListener(listener);
     }
     void draw() override {
-        if (ImGui::Button(_name.c_str())) {
+        if (ImGui::Button(_myName.getName().c_str())) {
             if (_onClickListener.get()) {
                 _onClickListener.get()(*this);
             }
@@ -95,8 +119,7 @@ class ViewGroup : public View {
     std::list<std::unique_ptr<View>> _childs;
     View* _parent;
 public:
-    std::string _name;
-    ViewGroup(std::string name) : _name(name), _parent(NULL)
+    ViewGroup() : _parent(NULL)
     {}
     virtual ~ViewGroup() {
         _childs.clear();
@@ -130,15 +153,9 @@ protected:
 };
 
 class LinerVerticalLayout : public ViewGroup {
-public:
-    LinerVerticalLayout(std::string name) : ViewGroup(name)
-    {}
 };
 
 class LinerHorizonLayout : public ViewGroup {
-public:
-    LinerHorizonLayout(std::string name) : ViewGroup(name)
-    {}
 protected:
     virtual void drawImpl() {
         auto last = getChild().end();
@@ -171,17 +188,11 @@ public:
     }
 };
 
-class MyName {
-    std::string _name;
-public:
-    void setName(std::string name) {
-        _name = name;
-    }
-};
-
-class Widget : public UseRouter {
+class Widget : public UseRouter, public MyName {
     ViewGroup* _rootView;
 public:
+    Widget(std::string name) : MyName(name)
+    {}
     void onCreate() {
         _rootView = onCreateView();
     }
@@ -193,17 +204,19 @@ public:
 
 class RootWidget : public Widget {
 public:
+    RootWidget(std::string name) : Widget(name)
+    {}
     virtual ViewGroup* onCreateView() override
     {
-        ViewGroup* pageG = new LinerVerticalLayout("pageG");
-        ViewGroup* page1 = new LinerHorizonLayout("page1");
+        ViewGroup* pageG = new LinerVerticalLayout();
+        ViewGroup* page1 = new LinerHorizonLayout();
         {
             Button* a1 = new Button("aa1");
             a1->setOnClickListenr([this](const View& const v)
                 {
                     std::cout << (&v) << "(aa1)" << std::endl;
                     RouterBase* r = this->getRouter();
-                    r->addDisplay("P1");
+                    r->addDisplay(PAGE_2);
                 }
             );
             page1->addChild(a1);
@@ -212,7 +225,7 @@ public:
                 {
                     std::cout << (&v) << "(aa2)" << std::endl;
                     RouterBase* r = this->getRouter();
-                    r->addDisplay("P2");
+                    r->addDisplay(PAGE_3);
                 }
             );
             page1->addChild(a2);
@@ -221,7 +234,7 @@ public:
         }
         pageG->addChild(page1);
 
-        ViewGroup* page2 = new LinerHorizonLayout("page2");
+        ViewGroup* page2 = new LinerHorizonLayout();
         {
             Button* a12 = new Button("aaa1");
             Button* a22 = new Button("aaa2");
@@ -234,7 +247,7 @@ public:
         return pageG;
     }
     void onDraw() override {
-        ImGui::Begin("aaa");
+        ImGui::Begin(getName().c_str());
         Widget::onDraw();
         ImGui::End();
     }
@@ -242,17 +255,19 @@ public:
 
 class RootWidget2 : public Widget {
 public:
+    RootWidget2(std::string name) : Widget(name)
+    {}
     virtual ViewGroup* onCreateView() override
     {
-        ViewGroup* pageG = new LinerVerticalLayout("pageG");
-        ViewGroup* page2 = new LinerHorizonLayout("page2");
+        ViewGroup* pageG = new LinerVerticalLayout();
+        ViewGroup* page2 = new LinerHorizonLayout();
         {
             Button* a12 = new Button("aaa1");
             a12->setOnClickListenr([this](const View& const v)
                 {
                     std::cout << (&v) << "(aa1)" << std::endl;
                     RouterBase* r = this->getRouter();
-                    r->removeDisplay("P1");
+                    r->removeDisplay(this->getName());
                 }
             );
             Button* a22 = new Button("aaa2");
@@ -265,7 +280,7 @@ public:
         return pageG;
     }
     void onDraw() override {
-        ImGui::Begin("bbb");
+        ImGui::Begin(getName().c_str());
         Widget::onDraw();
         ImGui::End();
     }
@@ -273,17 +288,19 @@ public:
 
 class RootWidget3 : public Widget {
 public:
+    RootWidget3(std::string name) : Widget(name)
+    {}
     virtual ViewGroup* onCreateView() override
     {
-        ViewGroup* pageG = new LinerVerticalLayout("pageG");
-        ViewGroup* page2 = new LinerHorizonLayout("page2");
+        ViewGroup* pageG = new LinerVerticalLayout();
+        ViewGroup* page2 = new LinerHorizonLayout();
         {
             Button* a12 = new Button("aaa1");
             a12->setOnClickListenr([this](const View& const v)
                 {
                     std::cout << (&v) << "(aa1)" << std::endl;
                     RouterBase* r = this->getRouter();
-                    r->removeDisplay("P2");
+                    r->removeDisplay(this->getName());
                 }
             );
             Button* a22 = new Button("aaa2");
@@ -296,7 +313,7 @@ public:
         return pageG;
     }
     void onDraw() override {
-        ImGui::Begin("ccc");
+        ImGui::Begin(getName().c_str());
         Widget::onDraw();
         ImGui::End();
     }
@@ -445,18 +462,17 @@ int main(int argc, char** argv) {
     //pageG.addChild(&page1);
     //pageG.addChild(&page2);
 
-
-    Widget* r1 = new RootWidget();
+    Widget* r1 = new RootWidget(NAME_ROOT);
     r1->onCreate();
-    Widget* r2 = new RootWidget2();
+    Widget* r2 = new RootWidget2(PAGE_2);
     r2->onCreate();
-    Widget* r3 = new RootWidget3();
+    Widget* r3 = new RootWidget3(PAGE_3);
     r3->onCreate();
 
     Router router;
-    router.add("ROOT", r1);
-    router.add("P1", r2);
-    router.add("P2", r3);
+    router.add(NAME_ROOT, r1);
+    router.add(PAGE_2, r2);
+    router.add(PAGE_3, r3);
     router.addDisplay("ROOT");
     //router.removeDisplay("ROOT");
     //router.addDisplay("P1");
