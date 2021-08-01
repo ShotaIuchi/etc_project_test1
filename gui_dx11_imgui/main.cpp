@@ -7,6 +7,8 @@
 
 #include <ui_module/ui_base.h>
 
+
+
 // Data
 static ID3D11Device* g_pd3dDevice = NULL;
 static ID3D11DeviceContext* g_pd3dDeviceContext = NULL;
@@ -19,6 +21,178 @@ void CleanupDeviceD3D();
 void CreateRenderTarget();
 void CleanupRenderTarget();
 LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
+
+
+
+#include <vector>
+#include <list>
+#include <functional>
+#include <algorithm>
+
+typedef std::function<void(int)> OnClickListener;
+
+//class SIButton : public View {
+//    OnClickListener* _onClickListener;
+//public:
+//    void setOnClickListenr(OnClickListener& listener) {
+//        _onClickListener = &listener;
+//    }
+//    void draw() override {
+//        if (ImGui::Button("aaa")) {
+//            (*_onClickListener)(10);
+//        }
+//    }
+//};
+
+
+template <typename T>
+class UseListener {
+    T  _listenerImpl;
+    T* _listener;
+public:
+    void setListener(T listener) {
+        _listenerImpl = std::move(listener);
+        _listener = &_listenerImpl;
+    }
+    void setListener(T* listener) {
+        _listener = listener;
+    }
+    const T* const get() {
+        return _listener;
+    }
+};
+
+
+struct View {
+    virtual void draw() = 0;
+    virtual void setParent(View* parent) = 0;
+};
+
+class Button : public View {
+    UseListener<OnClickListener> _onClickListener;
+    std::string _name;
+public:
+    Button(std::string name) : _name(name)
+    {}
+    void setOnClickListenr(OnClickListener listener) {
+        _onClickListener.setListener(listener);
+    }
+    void setOnClickListenr(OnClickListener* listener) {
+        _onClickListener.setListener(listener);
+    }
+    void draw() override {
+        if (ImGui::Button(_name.c_str())) {
+            if (_onClickListener.get()) {
+                (*_onClickListener.get())(10);
+            }
+        }
+    }
+    virtual void setParent(View* parent) override {
+        ;
+    }
+};
+
+class ViewGroup : public View {
+    std::list<View*> _childs;
+    View* _parent;
+public:
+    std::string _name;
+    ViewGroup(std::string name) : _name(name), _parent(NULL)
+    {}
+    virtual ~ViewGroup() {
+        _childs.clear();
+        _parent = NULL;
+    }
+    virtual void addChild(View* child) {
+        child->setParent(this);
+        _childs.push_back(child);
+    }
+    virtual void setParent(View* parent) override {
+        _parent = parent;
+    }
+    virtual void draw() override {
+        if (!_parent) {
+            ImGui::Begin(_name.c_str());
+        }
+        drawImpl();
+        if (!_parent) {
+            ImGui::End();
+        }  
+    }
+protected:
+    std::list<View*> getChild() {
+        return _childs;
+    }
+    virtual void drawImpl() {
+        for (auto child : _childs) {
+            child->draw();
+        }
+    }
+};
+
+class LinerVerticalLayout : public ViewGroup {
+public:
+    LinerVerticalLayout(std::string name) : ViewGroup(name)
+    {}
+};
+
+class LinerHorizonLayout : public ViewGroup {
+public:
+    LinerHorizonLayout(std::string name) : ViewGroup(name)
+    {}
+protected:
+    virtual void drawImpl() {
+        for (auto child : getChild()) {
+            child->draw();
+            ImGui::SameLine();
+        }
+    }
+};
+
+class Widget {
+    ViewGroup* _rootView;
+public:
+    void onCreate() {
+        _rootView = onCreateView();
+    }
+    virtual ViewGroup* onCreateView() = 0;
+    void onDraw() {
+        _rootView->draw();
+    }
+};
+
+class RootWidget : public Widget {
+public:
+    virtual ViewGroup* onCreateView() override
+    {
+        // èäóLå†Ç™è˜ìnÇ≈Ç´ÇƒÇ»Ç¢ÇÃÇ≈ÉGÉâÅ[
+        LinerHorizonLayout page1("page1");
+        //{
+        Button a1("aa1");
+        Button a2("aa2");
+        Button a3("aa3");
+        page1.addChild(&a1);
+        page1.addChild(&a2);
+        page1.addChild(&a3);
+        //}
+
+        LinerHorizonLayout page2("page2");
+        //{
+        Button a12("bb1");
+        Button a22("bb2");
+        Button a32("bb3");
+        page2.addChild(&a12);
+        page2.addChild(&a22);
+        page2.addChild(&a32);
+        //}
+
+        LinerVerticalLayout pageG("pageG");
+        pageG.addChild(&page1);
+        pageG.addChild(&page2);
+
+        return &pageG;
+    }
+};
 
 int main(int argc, char** argv) {
 	std::cout << argv[0] << std::endl;
@@ -94,6 +268,39 @@ int main(int argc, char** argv) {
     bool show_another_window = false;
     ImVec4 clear_color = ImVec4(0.45f, 0.55f, 0.60f, 1.00f);
 
+    Button b("b1");
+    OnClickListener bb = [](int x) { std::cout << x << "S" << std::endl; };
+    b.setOnClickListenr([](int x) { std::cout << x << "SS" << std::endl; });
+
+
+    LinerHorizonLayout page1("page1");
+    //{
+        Button a1("aa1");
+        Button a2("aa2");
+        Button a3("aa3");
+        page1.addChild(&a1);
+        page1.addChild(&a2);
+        page1.addChild(&a3);
+    //}
+
+    LinerHorizonLayout page2("page2");
+    //{
+        Button a12("bb1");
+        Button a22("bb2");
+        Button a32("bb3");
+        page2.addChild(&a12);
+        page2.addChild(&a22);
+        page2.addChild(&a32);
+    //}
+
+    LinerVerticalLayout pageG("pageG");
+    pageG.addChild(&page1);
+    pageG.addChild(&page2);
+
+
+    RootWidget r;
+    r.onCreate();
+
     // Main loop
     bool done = false;
     while (!done)
@@ -123,38 +330,41 @@ int main(int argc, char** argv) {
         if (show_demo_window)
             ImGui::ShowDemoWindow(&show_demo_window);
 
-        // 2. Show a simple window that we create ourselves. We use a Begin/End pair to created a named window.
         {
-            static float f = 0.0f;
-            static int counter = 0;
 
-            ImGui::Begin("Hello, world!");                          // Create a window called "Hello, world!" and append into it.
+            //ImGui::Begin("A");
+            //ImGui::Button("a");
+            //{
+            //    ImGui::BeginChild("B");
+            //    {
+            //        ImGui::BeginChild("C");
+            //        ImGui::Button("c");
+            //        ImGui::EndChild();
+            //    }
+            //    ImGui::EndChild();
+            //}
 
-            ImGui::Text("This is some useful text.");               // Display some text (you can use a format strings too)
-            ImGui::Checkbox("Demo Window", &show_demo_window);      // Edit bools storing our window open/close state
-            ImGui::Checkbox("Another Window", &show_another_window);
+            //ImGui::Begin("A2");
+            //{
+            //    ImGui::BeginChild("B2");
+            //    {
+            //        ImGui::BeginChild("C2");
+            //        ImGui::Button("c");
+            //        ImGui::EndChild();
+            //    }
+            //    ImGui::EndChild();
+            //}
+            //ImGui::End();
+            //ImGui::End();
 
-            ImGui::SliderFloat("float", &f, 0.0f, 1.0f);            // Edit 1 float using a slider from 0.0f to 1.0f
-            ImGui::ColorEdit3("clear color", (float*)&clear_color); // Edit 3 floats representing a color
+            //page.draw();
+            //ImGui::Begin("A2");
+            //pageG.draw();
+            //ImGui::End();
 
-            if (ImGui::Button("Button"))                            // Buttons return true when clicked (most widgets return true when edited/activated)
-                counter++;
-            ImGui::SameLine();
-            ImGui::Text("counter = %d", counter);
-
-            ImGui::Text("Application average %.3f ms/frame (%.1f FPS)", 1000.0f / ImGui::GetIO().Framerate, ImGui::GetIO().Framerate);
-            ImGui::End();
+            r.onDraw();
         }
 
-        // 3. Show another simple window.
-        if (show_another_window)
-        {
-            ImGui::Begin("Another Window", &show_another_window);   // Pass a pointer to our bool variable (the window will have a closing button that will clear the bool when clicked)
-            ImGui::Text("Hello from another window!");
-            if (ImGui::Button("Close Me"))
-                show_another_window = false;
-            ImGui::End();
-        }
 
         // Rendering
         ImGui::Render();
