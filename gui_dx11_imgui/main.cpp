@@ -28,45 +28,41 @@ LRESULT WINAPI WndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
 #include <list>
 #include <functional>
 #include <algorithm>
-
-typedef std::function<void(int)> OnClickListener;
-
-//class SIButton : public View {
-//    OnClickListener* _onClickListener;
-//public:
-//    void setOnClickListenr(OnClickListener& listener) {
-//        _onClickListener = &listener;
-//    }
-//    void draw() override {
-//        if (ImGui::Button("aaa")) {
-//            (*_onClickListener)(10);
-//        }
-//    }
-//};
-
-
-template <typename T>
-class UseListener {
-    T  _listenerImpl;
-    T* _listener;
-public:
-    void setListener(T listener) {
-        _listenerImpl = std::move(listener);
-        _listener = &_listenerImpl;
-    }
-    void setListener(T* listener) {
-        _listener = listener;
-    }
-    const T* const get() {
-        return _listener;
-    }
-};
-
+#include <type_traits>
 
 struct View {
     virtual void draw() = 0;
     virtual void setParent(View* parent) = 0;
 };
+
+typedef std::function<void(const View& const)> OnClickListener;
+
+template <typename T>
+class UseListener {
+    using NT = typename std::remove_pointer<T>::type;
+    using PT = typename std::add_pointer<T>::type;
+    using RT = typename std::add_lvalue_reference<T>::type;
+
+    // ƒ‰ƒ€ƒ_®‚Å“n‚³‚ê‚½ê‡‚ÌŠi”[æ
+    NT _listenerImpl;
+    // ƒŠƒXƒi[‚Ö‚ÌQÆ
+    RT _listener;
+
+public:
+    UseListener() : _listener(_listenerImpl)
+    {}
+    void setListener(NT listener) {
+        _listenerImpl = std::move(listener);
+        _listener = _listenerImpl;
+    }
+    void setListener(PT listener) {
+        _listener = *listener;
+    }
+    const RT const get() {
+        return _listener;
+    }
+};
+
 
 class Button : public View {
     UseListener<OnClickListener> _onClickListener;
@@ -83,7 +79,7 @@ public:
     void draw() override {
         if (ImGui::Button(_name.c_str())) {
             if (_onClickListener.get()) {
-                (*_onClickListener.get())(10);
+                _onClickListener.get()(*this);
             }
         }
     }
@@ -93,7 +89,7 @@ public:
 };
 
 class ViewGroup : public View {
-    std::list<View*> _childs;
+    std::list<std::unique_ptr<View>> _childs;
     View* _parent;
 public:
     std::string _name;
@@ -105,7 +101,7 @@ public:
     }
     virtual void addChild(View* child) {
         child->setParent(this);
-        _childs.push_back(child);
+        _childs.push_back(std::unique_ptr<View>(child));
     }
     virtual void setParent(View* parent) override {
         _parent = parent;
@@ -120,12 +116,13 @@ public:
         }  
     }
 protected:
-    std::list<View*> getChild() {
+    std::list<std::unique_ptr<View>>& getChild() {
         return _childs;
     }
     virtual void drawImpl() {
-        for (auto child : _childs) {
-            child->draw();
+        for (const auto& child : _childs) {
+            //child->draw();
+            child.get()->draw();
         }
     }
 };
@@ -142,8 +139,8 @@ public:
     {}
 protected:
     virtual void drawImpl() {
-        for (auto child : getChild()) {
-            child->draw();
+        for (const auto& child : getChild()) {
+            child.get()->draw();
             ImGui::SameLine();
         }
     }
@@ -165,32 +162,33 @@ class RootWidget : public Widget {
 public:
     virtual ViewGroup* onCreateView() override
     {
-        // Š—LŒ ‚ª÷“n‚Å‚«‚Ä‚È‚¢‚Ì‚ÅƒGƒ‰[
-        LinerHorizonLayout page1("page1");
-        //{
-        Button a1("aa1");
-        Button a2("aa2");
-        Button a3("aa3");
-        page1.addChild(&a1);
-        page1.addChild(&a2);
-        page1.addChild(&a3);
-        //}
+        LinerVerticalLayout* pageG = new LinerVerticalLayout("pageG");
+        LinerHorizonLayout* page1 = new LinerHorizonLayout("page1");
+        {
+            Button* a1 = new Button("aa1");
+            Button* a2 = new Button("aa2");
+            Button* a3 = new Button("aa3");
+            a1->setOnClickListenr([](const View& const v) {
+                std::cout << (&v) << "(aa1)" << std::endl;
+                }
+            );
+            page1->addChild(a1);
+            page1->addChild(a2);
+            page1->addChild(a3);
+        }
+        pageG->addChild(page1);
 
-        LinerHorizonLayout page2("page2");
-        //{
-        Button a12("bb1");
-        Button a22("bb2");
-        Button a32("bb3");
-        page2.addChild(&a12);
-        page2.addChild(&a22);
-        page2.addChild(&a32);
-        //}
-
-        LinerVerticalLayout pageG("pageG");
-        pageG.addChild(&page1);
-        pageG.addChild(&page2);
-
-        return &pageG;
+        LinerHorizonLayout* page2 = new LinerHorizonLayout("page2");
+        {
+            Button* a12 = new Button("aaa1");
+            Button* a22 = new Button("aaa2");
+            Button* a32 = new Button("aaa3");
+            page2->addChild(a12);
+            page2->addChild(a22);
+            page2->addChild(a32);
+        }
+        pageG->addChild(page2);
+        return pageG;
     }
 };
 
@@ -269,37 +267,44 @@ int main(int argc, char** argv) {
     ImVec4 clear_color = ImVec4(0.45f, 0.55f, 0.60f, 1.00f);
 
     Button b("b1");
-    OnClickListener bb = [](int x) { std::cout << x << "S" << std::endl; };
-    b.setOnClickListenr([](int x) { std::cout << x << "SS" << std::endl; });
+    OnClickListener bb = [](const View& const v) { std::cout << (&v) << "(S)" << std::endl; };
+    b.setOnClickListenr([](const View& const v)  { std::cout << (&v) << "(SS)" << std::endl; });
 
 
-    LinerHorizonLayout page1("page1");
-    //{
-        Button a1("aa1");
-        Button a2("aa2");
-        Button a3("aa3");
-        page1.addChild(&a1);
-        page1.addChild(&a2);
-        page1.addChild(&a3);
-    //}
+    //LinerHorizonLayout page1("page1");
+    ////{
+    //    Button a1("aa1");
+    //    Button a2("aa2");
+    //    Button a3("aa3");
+    //    page1.addChild(&a1);
+    //    page1.addChild(&a2);
+    //    page1.addChild(&a3);
+    ////}
 
-    LinerHorizonLayout page2("page2");
-    //{
-        Button a12("bb1");
-        Button a22("bb2");
-        Button a32("bb3");
-        page2.addChild(&a12);
-        page2.addChild(&a22);
-        page2.addChild(&a32);
-    //}
+    //LinerHorizonLayout page2("page2");
+    ////{
+    //    Button a12("bb1");
+    //    Button a22("bb2");
+    //    Button a32("bb3");
+    //    page2.addChild(&a12);
+    //    page2.addChild(&a22);
+    //    page2.addChild(&a32);
+    ////}
 
-    LinerVerticalLayout pageG("pageG");
-    pageG.addChild(&page1);
-    pageG.addChild(&page2);
+    //LinerVerticalLayout pageG("pageG");
+    //pageG.addChild(&page1);
+    //pageG.addChild(&page2);
 
 
     RootWidget r;
     r.onCreate();
+
+
+    std::list<std::unique_ptr<View>> v;
+    for (const auto& vv : v) {
+        vv.get()->draw();
+    }
+
 
     // Main loop
     bool done = false;
